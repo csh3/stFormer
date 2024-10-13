@@ -1,0 +1,1 @@
+please download the scFoundation model fine-tuned on the myocardial infarction Visium dataset via https://1drv.ms/u/c/66903a59122f277c/EV6yqFjDIuJGiPNo5WyvcSkBQaCSoypv9Q6zimQ_SDE5aw
