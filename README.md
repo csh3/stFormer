@@ -5,7 +5,7 @@ stFormer is a foundation model for spatial transcriptomics (ST). It incorporates
 
 ![stFormer Architecture](https://github.com/csh3/stFormer/blob/main/schematic_overview.png)
 
-The architecture of stFormer is designed for ST data resolved at the single-cell level. We propose a biased cross-attention method to extend the single-cell framework compatible with the spot-based Visium data, a widely used platform. 
+The architecture of stFormer is designed for ST data resolved at the single-cell level. We propose a biased cross-attention method to extend the single-cell framework compatible with the spot-based Visium data, a widely used ST platform. 
 
 The current version of stFormer was pretrained on a combined corpus of two Visium datasets respectively from human developmental intestine and myocardial infarction heart tissue. The pretraining data totally comprises about 0.58 million single-cell samples. stFormer is scalable to large pretraining corpus. 
 
