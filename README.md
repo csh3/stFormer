@@ -3,7 +3,7 @@
 ## 1. Introduction
 stFormer is a foundation model for spatial transcriptomics (ST). It incorporates ligand genes within the spatial niche into Transformer encoder of single-cell transcriptomics, and outputs gene embeddings specific to the intracellular context and spatial niche. These gene representations can serve as input of diverse downstream applications, including cell clustering, receptor-dependent gene network inference, interacting ligand-receptor pair identification, and in silico perturbation analysis of ligand-receptor interaction.
 
-![stFormer Architecture](https://github.com/csh3/stFormer/blob/main/schematic_overview.pdf)
+![stFormer Architecture](https://github.com/csh3/stFormer/blob/main/schematic_overview.png)
 
 The architecture of stFormer is designed for ST data resolved at the single-cell level. We propose a biased cross-attention method to extend the single-cell framework compatible with the spot-based Visium data, a widely used platform. 
 
