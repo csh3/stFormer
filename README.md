@@ -40,7 +40,7 @@ $ mv pretraining/pretraining.py .
 * **tasks** folder holds the jupyter notebooks and gene lists for performing downstream tasks, as well as the output results. 
 
 ## 4. Reference
-Cao, S. & Yuan, Y. A framework for gene representation on spatial transcriptomics. bioRxiv, 2024.2009.2027.615337 (2024). https://doi.org:10.1101/2024.09.27.615337
+Cao, S. & Yuan, Y. A framework for gene representation on spatial transcriptomics. bioRxiv, 2024.2009.2027.615337 (2024). https://doi.org/10.1101/2024.09.27.615337
 
 
 
