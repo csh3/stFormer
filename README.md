@@ -1,4 +1,4 @@
-## A framework for gene representation on spatial transcriptomics
+# A framework for gene representation on spatial transcriptomics
 
 ## 1. Introduction
 The framework incorporates ligand genes within the spatial niche into Transformer encoder of single-cell transcriptomics, and outputs gene embeddings specific to the intracellular context and spatial niche. These gene representations can serve as input of various downstream applications, including cell clustering, receptor-dependent gene network inference, interacting ligand-receptor pair identification, and in silico perturbation analysis of ligand-receptor interaction.
