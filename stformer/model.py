@@ -8,7 +8,7 @@ import torch
 import numpy as np
 from torch import nn, Tensor
 import torch.nn.functional as F
-from torch.nn import TransformerDecoder
+from torch.nn.modules.transformer import _get_clones, _get_seq_len, _detect_is_causal_mask
 from flash_attn.bert_padding import pad_input
 from stformer.flash_attention import FlashMHA
 
@@ -56,7 +56,7 @@ class TransformerModel(nn.Module):
             batch_first=True,
             norm_first=self.pre_norm,
         )
-        self.transformer_decoder = TransformerDecoder(decoder_layers, nlayers)
+        self.transformer_decoder = BiasedTransformerDecoder(decoder_layers, nlayers)
         
         self.decoder = ExprDecoder(d_model)
         if do_cls:
@@ -195,7 +195,7 @@ class GeneEncoder(nn.Module):
         return x
 
 
-#Flash attention decoder
+#Flash attention decoder layer
 class FlashTransformerDecoderLayer(nn.Module):
     r"""The class is modified from torch.nn.TransformerDecoderLayer to support the
     FlashAttention. It is made up of self-attn, multi-head-attn and feedforward network.
@@ -352,6 +352,51 @@ class FlashTransformerDecoderLayer(nn.Module):
         return self.dropout3(x)
 
 
+#Biased attention decoder
+class BiasedTransformerDecoder(nn.Module):
+    r"""The class is modified from torch.nn.TransformerDecoder to support the
+    biased cross-attention. BiasedTransformerDecoder is a stack of N decoder layers.
+
+    Args:
+        decoder_layer: an instance of the FlashTransformerDecoderLayer() class (required).
+        num_layers: the number of sub-decoder-layers in the decoder (required).
+        norm: the layer normalization component (optional).
+    """
+
+    __constants__ = ['norm']
+
+    def __init__(self, decoder_layer, num_layers, norm=None):
+        super().__init__()
+        torch._C._log_api_usage_once(f"torch.nn.modules.{self.__class__.__name__}")
+        self.layers = _get_clones(decoder_layer, num_layers)
+        self.num_layers = num_layers
+        self.norm = norm
+
+    def forward(self, tgt: Tensor, memory: Tensor, cross_attn_bias: Optional[Tensor] = None, tgt_mask: Optional[Tensor] = None,
+                memory_mask: Optional[Tensor] = None, tgt_key_padding_mask: Optional[Tensor] = None,
+                memory_key_padding_mask: Optional[Tensor] = None, tgt_is_causal: Optional[bool] = None,
+                memory_is_causal: bool = False) -> Tensor:
+        r"""Pass the inputs (and mask) through the decoder layer in turn.
+        """
+        output = tgt
+
+        seq_len = _get_seq_len(tgt, self.layers[0].self_attn.batch_first)
+        tgt_is_causal = _detect_is_causal_mask(tgt_mask, tgt_is_causal, seq_len)
+
+        for mod in self.layers:
+            output = mod(output, memory, cross_attn_bias=cross_attn_bias, tgt_mask=tgt_mask,
+                         memory_mask=memory_mask,
+                         tgt_key_padding_mask=tgt_key_padding_mask,
+                         memory_key_padding_mask=memory_key_padding_mask,
+                         tgt_is_causal=tgt_is_causal,
+                         memory_is_causal=memory_is_causal)
+
+        if self.norm is not None:
+            output = self.norm(output)
+
+        return output
+
+    
 class ExprDecoder(nn.Module):
     def __init__(self, d_model: int):
         super().__init__()
