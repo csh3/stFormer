@@ -10,7 +10,7 @@ The architecture is designed for ST data resolved at the single-cell level. We p
 The current version was pretrained on a combined corpus of two Visium datasets respectively from human developmental intestine and myocardial infarction heart tissue. The pretraining data totally comprises about 0.58 million spatially resolved cells. The framework is scalable to large pretraining corpus. 
 
 ## 2. Installation
-You can install stFormer by the following command:
+You can install stFormer with the following command:
 
 ```
 git clone https://github.com/csh3/stFormer.git
@@ -30,7 +30,8 @@ The project consists of the following four folders.
 
 * **tasks** folder holds the jupyter notebooks and gene lists for performing downstream tasks, as well as the output results. It also holds the **scfoundation** folder, which contains files for the single-cell transcriptomics foundation model, scFoundation, for comparison.
 
-If performing pretraining, you should move the python script to the main directory first using command `mv pretraining/pretraining.py .`.
+If performing pretraining, you should move the python script to the main directory first using command       
+`mv pretraining/pretraining.py .`
 
 ## 4. Reference
 Cao, S. & Yuan, Y. A framework for gene representation on spatial transcriptomics. bioRxiv, 2024.2009.2027.615337 (2024). https://doi.org/10.1101/2024.09.27.615337
