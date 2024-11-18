@@ -399,8 +399,8 @@ if len(sys.argv) < 3:
     cell_emb_style = 'max-pool'
 
     logger.info("Loading scFoundation model ...")
-    from scfoundation import load
-    pretrainmodel, pretrainconfig = load.load_model_frommmf('scfoundation/models/models.ckpt')
+    from tasks.scfoundation import load
+    pretrainmodel, pretrainconfig = load.load_model_frommmf('tasks/scfoundation/models/models.ckpt')
 
     model = TransformerModel(
         embsize,
