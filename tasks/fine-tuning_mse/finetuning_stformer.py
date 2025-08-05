@@ -28,10 +28,9 @@ from stformer.loss import masked_mse_loss
 
 
 class Tokenizer():
-    def __init__(self, data_path, tokenizer_dir, subset, vocab, mask_ratio, mask_value, pad_value, pad_token):
-        self.data_path = data_path
+    def __init__(self, adata, tokenizer_dir, vocab, mask_ratio, mask_value, pad_value, pad_token):
+        self.adata = adata
         self.tokenizer_dir = tokenizer_dir
-        self.subset = subset
         self.vocab = vocab
         self.mask_ratio = mask_ratio
         self.mask_value = mask_value
@@ -40,9 +39,9 @@ class Tokenizer():
         self.load_data()
     
     def load_data(self):
-        self.expression_matrix = pickle.load(open(f'{self.data_path}/expression_matrix_{self.subset}.pkl', 'rb'))
-        self.niche_ligands_expression = pickle.load(open(f'{self.data_path}/niche_ligands_expression_{self.subset}.pkl', 'rb'))
-        self.niche_composition = pickle.load(open(f'{self.data_path}/niche_composition_{self.subset}.pkl', 'rb'))
+        self.expression_matrix = self.adata.X
+        self.niche_ligands_expression = self.adata.obsm['niche_ligands_expression']
+        self.niche_composition = self.adata.obsm['niche_composition']
 
         gene_list_df = pd.read_csv(f'{self.tokenizer_dir}/OS_scRNA_gene_index.19264.tsv', header=0, delimiter='\t')
         gene_list = list(gene_list_df['gene_name'])
@@ -125,7 +124,7 @@ class SeqDataset(Dataset):
         return {k: v[idx] for k, v in self.data.items()}
     
 
-def train(model: nn.Module, loader: DataLoader, epoch, subset, slice, mse_train) -> None:
+def train(model: nn.Module, loader: DataLoader, slice, mse_train, epoch) -> None:
 
     model.train()
     total_mse = 0.0
@@ -143,6 +142,7 @@ def train(model: nn.Module, loader: DataLoader, epoch, subset, slice, mse_train)
         cross_attn_bias = batch_data["cross_attn_bias"].to(device)
 
         encoder_src_key_padding_mask = niche_gene_ids.eq(vocab[pad_token])
+        # encoder_src_key_padding_mask = torch.ones_like(niche_gene_ids, dtype=torch.bool).to(device)
         decoder_src_key_padding_mask = center_gene_ids.eq(vocab[pad_token])
         decoder_masked_positions = input_center_values.eq(mask_value)
 
@@ -189,7 +189,7 @@ def train(model: nn.Module, loader: DataLoader, epoch, subset, slice, mse_train)
             sec_per_batch = (time.time() - start_time) / log_interval
             cur_mse = total_mse / log_interval
             logger.info(
-                f"| epoch {epoch:2d} - subset {subset:2d} - slice {slice:2d} | "
+                f"|epoch {epoch:2d} slice {slice:2d} | "
                 f"{batch:3d}/{num_batches:3d} batches | "
                 f"lr {lr:05.8f} | sec/batch {sec_per_batch:5.1f} | "
                 f"mse {cur_mse:5.5f} | "
@@ -201,10 +201,11 @@ def train(model: nn.Module, loader: DataLoader, epoch, subset, slice, mse_train)
 
 
 ### Arguments
-# epoch, start_subset, model_checkpoint = sys.argv[1], sys.argv[2], sys.argv[3]
+# model_checkpoint, adata_file, output_suffix, epoch = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
-### Prepare the pretraining model
-if len(sys.argv) < 4:
+### Load the pretraining model
+logger.info("Load pretraining model")
+if len(sys.argv) < 10:
     logger.info("Initialize pretraining model")
 
     embsize = 768
@@ -216,7 +217,7 @@ if len(sys.argv) < 4:
 
     logger.info("Loading scFoundation model ...")
     from tasks.scfoundation import load
-    pretrainmodel, pretrainconfig = load.load_model_frommmf('../tasks/scfoundation/models/models.ckpt')
+    pretrainmodel, pretrainconfig = load.load_model_frommmf('../scfoundation/models/models.ckpt')
 
     model = TransformerModel(
         embsize,
@@ -233,6 +234,22 @@ if len(sys.argv) < 4:
 
     del pretrainmodel
 
+    model_file = sys.argv[1]
+    pt_model = torch.load(f'../../pretraining/models/{model_file}', map_location='cpu')
+
+    model_dict = model.state_dict()
+    pretrained_dict = pt_model.state_dict()
+    pretrained_dict = {
+                k: v
+                for k, v in pretrained_dict.items()
+                if 'cls_decoder' not in k and 'gcl_decoder' not in k
+                # if k in model_dict and v.shape == model_dict[k].shape
+    }
+    # for k, v in pretrained_dict.items():
+    #     logger.info(f"Loading params {k} with shape {v.shape}")
+    model_dict.update(pretrained_dict)
+    model.load_state_dict(model_dict)
+
     pre_freeze_param_count = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters() if p.requires_grad).values())
     # for name, para in model.named_parameters():
     #     para.requires_grad = True
@@ -241,10 +258,6 @@ if len(sys.argv) < 4:
     logger.info(f"Total Pre freeze Params {(pre_freeze_param_count)}")
     logger.info(f"Total Post freeze Params {(post_freeze_param_count)}")
 
-else:
-    logger.info("Load pretraining model")
-    model_file = sys.argv[3]
-    model = torch.load(f'pretraining_shuffled/{model_file}', map_location='cpu')
 
 model = nn.DataParallel(model, device_ids = [3, 2, 0, 1])
 device = torch.device("cuda:3")
@@ -277,38 +290,39 @@ pad_value = 103
 mask_value = 102
 mask_ratio = 0.15
 
-tokenizer_dir = '../stformer/tokenizer/'
+tokenizer_dir = '../../stformer/tokenizer/'
 vocab_file = tokenizer_dir + "scfoundation_gene_vocab.json"
 vocab = GeneVocab.from_file(vocab_file)
 vocab.append_token(pad_token)
 vocab.set_default_index(vocab[pad_token])
 
 
-### Prepare the pretraining data
-epoch = int(sys.argv[1])
-start_subset = int(sys.argv[2])
-data_path = f'STcorpus_shuffled/'
-logger.info(f"Train epoch {epoch} from subset {start_subset}")
+### Load the fine-tuning data
+adata_file = sys.argv[2]
+adata = sc.read_h5ad(adata_file)
+
+np.random.seed(0)
+shuffled_indices = np.random.permutation(adata.n_obs)
+adata = adata[shuffled_indices]
+
+output_suffix = sys.argv[3]
+logger.info(f"Fine-tuning {model_file} on {adata_file}.")
+epochs = int(sys.argv[4])
 
 
-### Train the model on the dataset
-for subset in range(start_subset, 41):
-    logger.info(f"Training epoch {epoch} on subset {subset}")
-    tokenizer = Tokenizer(data_path, tokenizer_dir, subset, vocab, mask_ratio, mask_value, pad_value, pad_token)
+### Finetuning the model on the dataset
+tokenizer = Tokenizer(adata, tokenizer_dir, vocab, mask_ratio, mask_value, pad_value, pad_token)
 
-    sample_obs = pickle.load(open(f'STcorpus_shuffled/observations_{subset}.pkl', 'rb'))
-    sample_num = sample_obs.shape[0]
+sample_num = adata.shape[0]
+mse_train = []
+for epoch in range(epochs):
     for slice in range(int(sample_num/10000)+(1 if sample_num%10000 else 0)):
-        logger.info(f"Training epoch {epoch} on subset {subset} - slice {slice}")
         tokenizer.tokenize_data(slice*10000, (slice+1)*10000)
         tokenizer.prepare_data()
         data_loader = tokenizer.prepare_dataloader(batch_size)
 
-        mse_train = []
-        train(model, data_loader, epoch, subset, slice, mse_train)
+        train(model, data_loader, slice, mse_train, epoch)
 
-        pickle.dump(mse_train, open(f'pretraining_shuffled/mse/epoch{epoch}_subset{subset}_slice{slice}.pkl', 'wb'))
-
-        model_ckpt = model.module.to('cpu')
-        torch.save(model_ckpt, f'pretraining_shuffled/model_epoch{epoch}_subset{subset}_slice{slice}.ckpt')
-        model.module.to(device)
+# pickle.dump(mse_train, open(f'mse/{model_file[6:-5]}-{output_suffix}.pkl', 'wb'))
+model_ckpt = model.module.to('cpu')
+torch.save(model_ckpt, f'models/ft-{model_file[6:-5]}-{output_suffix}.ckpt')

@@ -1,1 +1,0 @@
-please download the pretrained stFormer model via https://1drv.ms/u/c/66903a59122f277c/EW8cTFgQSZ5AinBKDAWylCoBK_0EbvBihKiGFs-Q2ncHMw

@@ -21,13 +21,10 @@ class TransformerModel(nn.Module):
         nlayers: int,
         do_cls: bool = False,
         do_gcl: bool = False,
-        do_lrc: bool = False,
         nlayers_cls: int = 3,
         n_cls: int = 2,
         nlayers_gcl: int = 3,
         n_gcl: int = 2,
-        nlayers_lrc: int = 3,
-        n_lrc: int = 2,
         dropout: float = 0.1,
         cell_emb_style: str = "max-pool",
         pre_norm: bool = False,
@@ -63,8 +60,6 @@ class TransformerModel(nn.Module):
             self.cls_decoder = ClsDecoder(d_model, n_cls, nlayers=nlayers_cls)
         if do_gcl:
             self.gcl_decoder = GclDecoder(d_model, n_gcl, nlayers=nlayers_gcl)
-        if do_lrc:
-            self.lrc_decoder = LRCDecoder(d_model, n_lrc, nlayers=nlayers_lrc)
 
     def _encode(
         self,
@@ -94,20 +89,13 @@ class TransformerModel(nn.Module):
                     memory_key_padding_mask=memory_key_padding_mask, tgt_is_causal=tgt_is_causal, memory_is_causal=memory_is_causal)
         return output
 
-    def _pad_information_of_split_input(self, encoder_feature_lens: Tensor, ligand=False, max_seqlen=None):
+    def _pad_information_of_split_input(self, encoder_feature_lens: Tensor, max_seqlen=None):
         if max_seqlen is None:
             max_seqlen = encoder_feature_lens.max().item()
-        if ligand:
-            total_cell_num = encoder_feature_lens.size(0)
-        else:
-            total_cell_num = (encoder_feature_lens>0).sum().item()
+        total_cell_num = encoder_feature_lens.size(0)
         key_padding_mask = torch.zeros((total_cell_num, max_seqlen), dtype=torch.bool, device=encoder_feature_lens.device)
-        if ligand:
-            for i,val in enumerate(encoder_feature_lens):
-                key_padding_mask[i, val:] = True
-        else:
-            for i,val in enumerate(encoder_feature_lens[encoder_feature_lens>0]):
-                key_padding_mask[i, val:] = True
+        for i,val in enumerate(encoder_feature_lens):
+            key_padding_mask[i, val:] = True
         indices = (~key_padding_mask.view(-1)).nonzero(as_tuple=True)[0]
         return indices, total_cell_num, max_seqlen, key_padding_mask
 
@@ -120,14 +108,8 @@ class TransformerModel(nn.Module):
         decoder_values: Tensor,
         decoder_src_key_padding_mask: Tensor,
         cross_attn_bias: Tensor,
-        niche_l: Optional[Tensor] = None,
-        center_l: Optional[Tensor] = None,
-        center_r: Optional[Tensor] = None,
-        max_l_seqlen: Optional[int] = None,
-        max_r_seqlen: Optional[int] = None,
         CLS: bool = False,
         GCL: bool = False,
-        LRC: bool = False,
         output_gene_emb: bool = False,
     ) -> Mapping[str, Tensor]:
         
@@ -153,25 +135,6 @@ class TransformerModel(nn.Module):
             output["cls_output"] = self.cls_decoder(cell_emb)  # (batch, n_cls)
         if GCL:
             output["gcl_output"] = self.gcl_decoder(decoder_output)
-        if LRC:
-            split_src_indices, total_cell_num, max_seqlen, _ = self._pad_information_of_split_input(niche_l.sum(1), ligand=True)
-            memory_l = pad_input(memory[niche_l], split_src_indices, total_cell_num, max_seqlen)
-            cross_attn_bias_l = pad_input(torch.exp(cross_attn_bias[niche_l]).unsqueeze(-1), split_src_indices, total_cell_num, max_seqlen).squeeze(-1)
-
-            niche_cell_num = (niche_l.sum(1)/center_l.sum(1)).cpu().numpy().astype(int)
-            gene_num = center_l.sum(1).cpu().numpy()
-            memory_l_pooling = []
-            for center_cell in range(total_cell_num):
-                for k in range(gene_num[center_cell]):
-                    # memory_l_pooling.append(np.max([memory_l[center_cell][k+niche_cell*gene_num[center_cell]].cpu().numpy() for niche_cell in range(niche_cell_num[center_cell])], axis=0))
-                    memory_l_pooling.append(np.sum([cross_attn_bias_l[center_cell][k+niche_cell*gene_num[center_cell]].item()*memory_l[center_cell][k+niche_cell*gene_num[center_cell]].cpu().numpy() for niche_cell in range(niche_cell_num[center_cell])], axis=0))
-            
-            split_src_indices, total_cell_num, max_seqlen, _ = self._pad_information_of_split_input(center_l.sum(1), ligand=True, max_seqlen = max_l_seqlen)
-            memory_l_pooling = pad_input(torch.tensor(memory_l_pooling, device=decoder_output.device, dtype=decoder_output.dtype), split_src_indices, total_cell_num, max_seqlen)
-            split_src_indices, total_cell_num, max_seqlen, _ = self._pad_information_of_split_input(center_r.sum(1), ligand=True, max_seqlen = max_r_seqlen)
-            decoder_output_r = pad_input(decoder_output[center_r], split_src_indices, total_cell_num, max_seqlen)
-            
-            output["lrc_output"] = self.lrc_decoder(memory_l_pooling, decoder_output_r)
         
         return output
 
@@ -343,8 +306,21 @@ class FlashTransformerDecoderLayer(nn.Module):
 
     # multihead attention block
     def _mha_block(self, x, memory, attn_bias, tgt_key_padding_mask, memory_key_padding_mask, memory_is_causal) -> Tensor:
-        x = self.cross_attn(x, mem=memory, attn_bias=attn_bias, tgt_key_padding_mask=tgt_key_padding_mask, memory_key_padding_mask=memory_key_padding_mask, memory_is_causal=memory_is_causal)[0]
-        return self.dropout2(x)
+        output = torch.zeros_like(x, device=x.device)
+        selected_index = ~((~memory_key_padding_mask).all(dim=1))
+        
+        x = x[selected_index]
+        memory = memory[selected_index]
+        attn_bias = attn_bias[selected_index]
+        tgt_key_padding_mask = tgt_key_padding_mask[selected_index]
+        memory_key_padding_mask = memory_key_padding_mask[selected_index]
+       
+        r = self.cross_attn(x, mem=memory, attn_bias=attn_bias, tgt_key_padding_mask=tgt_key_padding_mask, memory_key_padding_mask=memory_key_padding_mask, memory_is_causal=memory_is_causal)[0]
+        
+        output = output.type(r.dtype)
+        output[selected_index] = r
+        
+        return self.dropout2(output)
 
     # feed forward block
     def _ff_block(self, x: Tensor) -> Tensor:
@@ -473,35 +449,3 @@ class GclDecoder(nn.Module):
         for layer in self._decoder:
             x = layer(x)
         return self.out_layer(x)
-
-
-class LRCDecoder(nn.Module):
-    """
-    Decoder for ligand-receptor pair classification task.
-    """
-
-    def __init__(
-        self,
-        d_model: int,
-        n_lr: int = 2,
-        nlayers: int = 3,
-        activation: callable = nn.ReLU,
-    ):
-        super().__init__()
-        self.norm_l = nn.LayerNorm(d_model)
-
-        d_model = 2*d_model
-        self._decoder = nn.ModuleList()
-        for i in range(nlayers - 1):
-            self._decoder.append(nn.Linear(d_model, d_model))
-            self._decoder.append(activation())
-            self._decoder.append(nn.LayerNorm(d_model))
-        self.out_layer = nn.Linear(d_model, n_lr)
-
-    def forward(self, ligand, receptor) -> Tensor:
-        ligand = self.norm_l(ligand)
-        x_lr = [list(itertools.product(ligand[i].cpu(), receptor[i].cpu())) for i in range(ligand.size(0))]
-        x_lr = torch.tensor([[torch.concat(lr).tolist() for lr in cell] for cell in x_lr], device=ligand.device)
-        for layer in self._decoder:
-            x_lr = layer(x_lr)
-        return self.out_layer(x_lr)
