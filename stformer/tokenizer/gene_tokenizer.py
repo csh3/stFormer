@@ -560,6 +560,154 @@ def tokenize_and_pad_batch(
     return batch_padded
 
 
+def tokenize_batch_2(
+    expression_matrix: np.ndarray,
+    niche_ligands_expression: np.ndarray,
+    biases: np.ndarray,
+    gene_ids: np.ndarray,
+    ligand_ids: np.ndarray,
+):
+    if expression_matrix.shape[1] != len(gene_ids):
+        raise ValueError(
+            f"Number of features in expression_matrix ({expression_matrix.shape[1]}) does not match "
+            f"number of gene_ids ({len(gene_ids)})."
+        )
+    if niche_ligands_expression.shape[1] != len(ligand_ids):
+        raise ValueError(
+            f"Number of features in niche_ligands_expression ({niche_ligands_expression.shape[1]}) does not match "
+            f"number of ligand_ids ({len(ligand_ids)})."
+        )
+    if biases.shape[1] != len(ligand_ids):
+        raise ValueError(
+            f"Number of features in biases ({biases.shape[1]}) does not match "
+            f"number of ligand_ids ({len(ligand_ids)})."
+        )
+
+    tokenized_data = []
+    for i in range(expression_matrix.shape[0]):
+        expression_row = expression_matrix[i]
+        idx = np.nonzero(expression_row)[0]
+        expression_genes = gene_ids[idx]
+        expression_values = expression_row[idx]
+        
+        ligands_expression_row = niche_ligands_expression[i]
+        idx = np.nonzero(ligands_expression_row)[0]
+        ligands_expression_genes = ligand_ids[idx]
+        ligands_expression_values = ligands_expression_row[idx]
+        attn_bias = biases[i][idx]
+
+        expression_genes = torch.from_numpy(expression_genes).long()
+        expression_values = torch.from_numpy(expression_values).float()
+
+        ligands_expression_genes = torch.from_numpy(ligands_expression_genes).long()
+        ligands_expression_values = torch.from_numpy(ligands_expression_values).float()
+        attn_bias = torch.from_numpy(attn_bias).float()
+    
+        tokenized_data.append((expression_genes, expression_values, ligands_expression_genes, ligands_expression_values, attn_bias))
+    return tokenized_data
+
+
+def pad_batch_2(
+    batch: List[Tuple],
+    pad_id: int,
+    pad_value: int = 0,
+):
+    max_center_gene_len = max(len(batch[i][0]) for i in range(len(batch)))
+    max_niche_gene_len = max(len(batch[i][2]) for i in range(len(batch)))
+
+    center_gene_ids_list = []
+    center_values_list = []
+
+    niche_gene_ids_list = []
+    niche_values_list = []
+
+    attn_bias_list = []
+
+    for i in range(len(batch)):
+        center_gene_ids, center_values, niche_gene_ids, niche_values, attn_bias = batch[i]
+
+        if len(center_gene_ids) < max_center_gene_len:
+            center_gene_ids = torch.cat(
+                    [
+                        center_gene_ids,
+                        torch.full(
+                            (max_center_gene_len - len(center_gene_ids),), pad_id, dtype=center_gene_ids.dtype
+                        ),
+                    ]
+                )
+            center_values = torch.cat(
+                    [
+                        center_values,
+                        torch.full((max_center_gene_len - len(center_values),), pad_value, dtype=center_values.dtype),
+                    ]
+                )
+
+        center_gene_ids_list.append(center_gene_ids)
+        center_values_list.append(center_values)
+
+        if len(niche_gene_ids) < max_niche_gene_len:
+            niche_gene_ids = torch.cat(
+                    [
+                        niche_gene_ids,
+                        torch.full(
+                            (max_niche_gene_len - len(niche_gene_ids),), pad_id, dtype=niche_gene_ids.dtype
+                        ),
+                    ]
+                )
+            niche_values = torch.cat(
+                    [
+                        niche_values,
+                        torch.full((max_niche_gene_len - len(niche_values),), pad_value, dtype=niche_values.dtype),
+                    ]
+                )
+            attn_bias = torch.cat(
+                    [
+                        attn_bias,
+                        torch.full(
+                            (max_niche_gene_len - len(attn_bias),), -np.inf, dtype=attn_bias.dtype
+                        ),
+                    ]
+                )
+
+        niche_gene_ids_list.append(niche_gene_ids)
+        niche_values_list.append(niche_values)
+        attn_bias_list.append(attn_bias)
+
+    batch_padded = {
+        "center_genes": torch.stack(center_gene_ids_list, dim=0),
+        "center_values": torch.stack(center_values_list, dim=0),
+        "niche_genes": torch.stack(niche_gene_ids_list, dim=0),
+        "niche_values": torch.stack(niche_values_list, dim=0),
+        "cross_attn_bias": torch.stack(attn_bias_list, dim=0),
+    }
+    return batch_padded
+
+
+def tokenize_and_pad_batch_2(
+    expression_matrix: np.ndarray,
+    niche_ligands_expression: np.ndarray,
+    biases: np.ndarray,
+    gene_ids: np.ndarray,
+    ligand_ids: np.ndarray,
+    pad_id: int,
+    pad_value: int,
+) -> Dict[str, torch.Tensor]:
+    tokenized_data = tokenize_batch_2(
+        expression_matrix,
+        niche_ligands_expression,
+        biases,
+        gene_ids,
+        ligand_ids,
+    )
+
+    batch_padded = pad_batch_2(
+        tokenized_data,
+        pad_id,
+        pad_value,
+    )
+    return batch_padded
+    
+
 def random_mask_value(
     values: Union[torch.Tensor, np.ndarray],
     mask_ratio: float = 0.15,
