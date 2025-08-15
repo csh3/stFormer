@@ -30,7 +30,7 @@ The project consists of the following four folders.
 
 * **tasks** folder holds jupyter notebooks and gene lists for performing downstream tasks. It also holds the **scfoundation** folder, which contains files for scFoundation, a single-cell transcriptomics foundation model, for comparison.
 
-The pretrained model weights in **pretraining**, formatted ST data in **datasets**, fine-tuned model weights in **tasks/fine-tuning_mse**, and output results in **tasks/figures** reported in reference [1] are deposited on the Zenodo data repository under record number 13895591.
+The pretrained model weights in **pretraining**, formatted ST data in **datasets**, fine-tuned model weights in **tasks/fine-tuning_mse**, and output results in **tasks/figures** reported in reference [1] are deposited on the Zenodo data repository under record number 16731623.
 
 ## 4. Reference
 [1] Cao, S. *et al*. stFormer: a foundation model for spatial transcriptomics. bioRxiv, 2024.2009.2027.615337 (2025). https://doi.org/10.1101/2024.09.27.615337
