@@ -1,4 +1,4 @@
-<img width="432" height="12" alt="image" src="https://github.com/user-attachments/assets/49484fa1-d278-41ab-8c9f-4cda38957e66" /># stFormer: a foundation model for spatial transcriptomics
+# stFormer: a foundation model for spatial transcriptomics
 
 ## 1. Introduction
 stFormer incorporates ligand genes within the spatial niche into transformer encoder of single-cell transcriptomics, and outputs gene embeddings specific to the intracellular context and spatial niche. These gene representations can serve as input of various downstream applications, including cell clustering, cell type prediction, gene function prediction, and *in silico* perturbation analysis of ligand-receptor interaction.
@@ -32,7 +32,7 @@ The project consists of the following four folders.
 
 * **cases** folder holds jupyter notebooks for performing case studies.
 
-The pretrained model weights in **pretraining**, formatted ST data in **datasets**, fine-tuned model weights in **tasks/fine-tuning_mse**, datasets used for case studies in **cases**, and output results in **tasks/figures** reported in reference [1] are deposited on the Zenodo data repository under record number 20755048.
+The pretrained model weights in **pretraining**, formatted ST data in **datasets**, fine-tuned model weights in **tasks/fine-tuning_mse**, ST data used for case studies in **cases**, and output results in **tasks/figures** reported in reference [1] are deposited on the Zenodo data repository under record number 20755048.
 
 ## 4. Reference
 [1] Cao, S. *et al*. stFormer: a foundation model for spatial transcriptomics. bioRxiv, 2024.2009.2027.615337 (2025). https://doi.org/10.1101/2024.09.27.615337
