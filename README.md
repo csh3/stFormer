@@ -1,4 +1,4 @@
-# stFormer integrates spatial ligand signaling into a foundation model for spatial transcriptomics.
+# stFormer integrates spatial ligand signaling into a foundation model for spatial transcriptomics
 
 ## 1. Introduction
 stFormer incorporates ligand genes within the spatial niche into transformer encoder of single-cell transcriptomics, and outputs gene embeddings specific to the intracellular context and spatial niche. These gene representations can serve as input of various downstream applications, including cell clustering, cell type prediction, gene function prediction, and *in silico* perturbation analysis of ligand-receptor interaction.
